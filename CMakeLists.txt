@@ -20,7 +20,19 @@ elseif(NOT APPLE)
     string(APPEND CMAKE_CXX_FLAGS " -Wall -Wextra -Wl,-rpath,'$ORIGIN'")
     string(APPEND CMAKE_C_FLAGS " -Wall -Wextra")
 endif()
-
+set(SUBMODULE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/lib")
+if(ANDROID)
+  set(ANDROID_EXTERNAL_ARG
+      -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}
+      -DANDROID_ABI=${ANDROID_ABI}
+      -DANDROID_PLATFORM=${ANDROID_PLATFORM}
+      -DANDROID_NDK=${ANDROID_NDK}
+      -DANDROID_STL=${ANDROID_STL}
+      -DCMAKE_ANDROID_STL_TYPE=${CMAKE_ANDROID_STL_TYPE}
+      -DCMAKE_SYSTEM_NAME=Android
+      -DCMAKE_SYSTEM_VERSION=${CMAKE_SYSTEM_VERSION}
+  )
+endif()
 add_library(
     piper_phonemize SHARED
     src/phonemize.cpp
@@ -58,6 +70,10 @@ if(NOT DEFINED ONNXRUNTIME_DIR)
         endif()
 
         set(ONNXRUNTIME_EXT "tgz")
+    elseif (ANDROID)
+      set(ONNXRUNTIME_VERSION "1.14.0") # Android doesnt have the 1.14.1 patch released for it because it didn't fix anything on Android
+      set(ONNXRUNTIME_PREFIX "onnxruntime-android-${ONNXRUNTIME_VERSION}")
+      set(ONNXRUNTIME_EXT "aar")
     else()
         if(CMAKE_SYSTEM_PROCESSOR STREQUAL x86_64)
             # Linux x86-64
@@ -77,7 +93,12 @@ if(NOT DEFINED ONNXRUNTIME_DIR)
     endif()
 
     if(NOT DEFINED ONNXRUNTIME_URL)
+      if(NOT ANDROID)
         set(ONNXRUNTIME_URL "https://github.com/microsoft/onnxruntime/releases/download/v${ONNXRUNTIME_VERSION}/${ONNXRUNTIME_PREFIX}.${ONNXRUNTIME_EXT}")
+      else()
+        # Android does not have the 1.14.1 patch release because nothing was changed for it
+        set(ONNXRUNTIME_URL "https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/${ONNXRUNTIME_VERSION}/${ONNXRUNTIME_PREFIX}.${ONNXRUNTIME_EXT}")
+      endif()
     endif()
 
     set(ONNXRUNTIME_FILENAME "${ONNXRUNTIME_PREFIX}.${ONNXRUNTIME_EXT}")
@@ -89,9 +110,12 @@ if(NOT DEFINED ONNXRUNTIME_DIR)
             message("Downloading ${ONNXRUNTIME_URL}")
             file(DOWNLOAD "${ONNXRUNTIME_URL}" "download/${ONNXRUNTIME_FILENAME}")
         endif()
-
         # Extract .zip or .tgz to a directory like lib/onnxruntime-linux-x64-1.14.1/
-        file(ARCHIVE_EXTRACT INPUT "download/${ONNXRUNTIME_FILENAME}" DESTINATION "${CMAKE_CURRENT_LIST_DIR}/lib")
+        if(NOT ANDROID)
+          file(ARCHIVE_EXTRACT INPUT "download/${ONNXRUNTIME_FILENAME}" DESTINATION "${CMAKE_CURRENT_LIST_DIR}/lib")
+        else() # Special handling for the AAR format on Android
+          file(ARCHIVE_EXTRACT INPUT "download/${ONNXRUNTIME_FILENAME}" DESTINATION "${CMAKE_CURRENT_LIST_DIR}/lib/${ONNXRUNTIME_PREFIX}")
+        endif()
     endif()
 endif()
 
@@ -127,14 +151,35 @@ target_include_directories(
     piper_phonemize PUBLIC
     "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src>"
     ${ESPEAK_NG_DIR}/include
-    ${ONNXRUNTIME_DIR}/include
 )
 
 target_link_directories(
     piper_phonemize PUBLIC
     ${ESPEAK_NG_DIR}/lib
-    ${ONNXRUNTIME_DIR}/lib
 )
+
+# Android has different paths due to being AAR instead of the normal install distribution.
+if(NOT ANDROID)
+  set(ONNX_LIB_PATH "${ONNXRUNTIME_DIR}/lib")
+  set(ONNX_INCLUDE_PATH "${ONNXRUNTIME_DIR}/include")
+else()
+  set(SUPPORTED_ABIS "arm64-v8a;armeabi-v7a;x86_64;x86")
+  if(NOT ANDROID_ABI IN_LIST SUPPORTED_ABIS)
+      message(FATAL_ERROR 
+          "\nFATAL: Unsupported Android ABI: '${ANDROID_ABI}'.\n"
+          "Must be one of: ${SUPPORTED_ABIS}"
+      )
+  endif()
+  set(ONNX_LIB_PATH "${ONNXRUNTIME_DIR}/jni/${ANDROID_ABI}/") # Make sure this ends with a "/" else it gets installed to lib/<abi>/libonnxruntime.so
+  set(ONNX_INCLUDE_PATH "${ONNXRUNTIME_DIR}/headers/") # Make sure this ends with a "/" else it gets installed to include/headers/<headers>.h
+  if(NOT EXISTS "${ONNX_LIB_PATH}")
+      message(FATAL_ERROR "Could not find ONNX library folder at: ${ONNX_LIB_PATH}")
+  endif()
+endif()
+message(INFO "Using lib path ${ONNX_LIB_PATH}")
+message(INFO "Using header path ${ONNX_INCLUDE_PATH}")
+target_link_directories(piper_phonemize PUBLIC "${ONNX_LIB_PATH}")
+target_include_directories(piper_phonemize PUBLIC "${ONNX_INCLUDE_PATH}")
 
 target_link_libraries(
     piper_phonemize
@@ -227,9 +272,9 @@ install(
     DESTINATION ${CMAKE_INSTALL_PREFIX})
 
 install(
-    DIRECTORY ${ONNXRUNTIME_DIR}/include/
+    DIRECTORY ${ONNX_INCLUDE_PATH}
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
 install(
-    DIRECTORY ${ONNXRUNTIME_DIR}/lib/
+    DIRECTORY ${ONNX_LIB_PATH}
     DESTINATION ${CMAKE_INSTALL_LIBDIR})
