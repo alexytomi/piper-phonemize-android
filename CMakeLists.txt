@@ -124,22 +124,35 @@ endif()
 if(NOT DEFINED ESPEAK_NG_DIR)
     set(ESPEAK_NG_DIR "${CMAKE_CURRENT_BINARY_DIR}/ei")
 
+    set(ESPEAK_ARGS
+      -DCMAKE_INSTALL_PREFIX:PATH=${ESPEAK_NG_DIR}
+      -DUSE_ASYNC:BOOL=OFF
+      -DBUILD_SHARED_LIBS:BOOL=ON
+      -DUSE_MBROLA:BOOL=OFF
+      -DUSE_LIBSONIC:BOOL=OFF
+      -DUSE_LIBPCAUDIO:BOOL=OFF
+      -DUSE_KLATT:BOOL=OFF
+      -DUSE_SPEECHPLAYER:BOOL=OFF
+      -DEXTRA_cmn:BOOL=ON
+      -DEXTRA_ru:BOOL=ON
+      -DCMAKE_C_FLAGS="-D_FILE_OFFSET_BITS=64"
+    )
+
+    if(ANDROID)
+        list(APPEND ESPEAK_ARGS
+          ${ANDROID_EXTERNAL_ARG}
+        )
+        set(ESPEAK_BUILD_CMD BUILD_COMMAND ${CMAKE_MAKE_PROGRAM} espeak-ng espeak-ng-bin)
+        set(ESPEAK_INSTALL_COMMAND INSTALL_COMMAND ${CMAKE_MAKE_PROGRAM} install/fast)
+    endif()
     include(ExternalProject)
     ExternalProject_Add(
         espeak_ng_external
         PREFIX "${CMAKE_CURRENT_BINARY_DIR}/e"
         URL "https://github.com/rhasspy/espeak-ng/archive/0f65aa301e0d6bae5e172cc74197d32a6182200f.zip"
-        CMAKE_ARGS -DCMAKE_INSTALL_PREFIX:PATH=${ESPEAK_NG_DIR}
-        CMAKE_ARGS -DUSE_ASYNC:BOOL=OFF
-        CMAKE_ARGS -DBUILD_SHARED_LIBS:BOOL=ON
-        CMAKE_ARGS -DUSE_MBROLA:BOOL=OFF
-        CMAKE_ARGS -DUSE_LIBSONIC:BOOL=OFF
-        CMAKE_ARGS -DUSE_LIBPCAUDIO:BOOL=OFF
-        CMAKE_ARGS -DUSE_KLATT:BOOL=OFF
-        CMAKE_ARGS -DUSE_SPEECHPLAYER:BOOL=OFF
-        CMAKE_ARGS -DEXTRA_cmn:BOOL=ON
-        CMAKE_ARGS -DEXTRA_ru:BOOL=ON
-        CMAKE_ARGS -DCMAKE_C_FLAGS="-D_FILE_OFFSET_BITS=64"
+        CMAKE_ARGS ${ESPEAK_ARGS}
+        ${ESPEAK_BUILD_CMD}
+        ${ESPEAK_INSTALL_COMMAND}
     )
     add_dependencies(piper_phonemize espeak_ng_external)
 endif()
