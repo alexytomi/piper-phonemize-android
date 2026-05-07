@@ -137,17 +137,26 @@ if(NOT DEFINED ESPEAK_NG_DIR)
       -DEXTRA_ru:BOOL=ON
       -DCMAKE_C_FLAGS="-D_FILE_OFFSET_BITS=64"
     )
+    include(ExternalProject)
 
     if(ANDROID)
+        ExternalProject_Add(
+            espeak_ng_host
+            PREFIX "${CMAKE_CURRENT_BINARY_DIR}/e-native"
+            URL "https://github.com/rhasspy/espeak-ng/archive/0f65aa301e0d6bae5e172cc74197d32a6182200f.zip"
+            CMAKE_ARGS ${ESPEAK_ARGS} -DCMAKE_INSTALL_PREFIX:PATH=${ESPEAK_NG_DIR}h
+            BUILD_COMMAND ${CMAKE_MAKE_PROGRAM} espeak-ng-data
+        )
         list(APPEND ESPEAK_ARGS
           ${ANDROID_EXTERNAL_ARG}
         )
         set(ESPEAK_BUILD_CMD BUILD_COMMAND ${CMAKE_MAKE_PROGRAM} espeak-ng espeak-ng-bin)
         set(ESPEAK_INSTALL_COMMAND INSTALL_COMMAND ${CMAKE_MAKE_PROGRAM} install/fast)
+        set(ESPEAK_NG_DEPENDS DEPENDS espeak_ng_host)
     endif()
-    include(ExternalProject)
     ExternalProject_Add(
         espeak_ng_external
+        ${ESPEAK_NG_DEPENDS}
         PREFIX "${CMAKE_CURRENT_BINARY_DIR}/e"
         URL "https://github.com/rhasspy/espeak-ng/archive/0f65aa301e0d6bae5e172cc74197d32a6182200f.zip"
         CMAKE_ARGS ${ESPEAK_ARGS}
@@ -283,6 +292,13 @@ install(
 install(
     DIRECTORY ${ESPEAK_NG_DIR}/
     DESTINATION ${CMAKE_INSTALL_PREFIX})
+
+if(ANDROID)
+  install(
+    DIRECTORY "${ESPEAK_NG_DIR}h/share/"
+    DESTINATION "share"
+  )
+endif()
 
 install(
     DIRECTORY ${ONNX_INCLUDE_PATH}
